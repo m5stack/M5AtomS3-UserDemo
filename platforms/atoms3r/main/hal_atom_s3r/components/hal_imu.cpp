@@ -5,14 +5,14 @@
  */
 #include "../hal_atom_s3r.h"
 #include "../hal_config.h"
+#include "../utils/bmi270/src/bmi270.h"
 #include <cstdint>
 #include <cstdio>
 #include <mooncake.h>
 #include <driver/gpio.h>
-#include "../utils/bmi270/src/bmi270.h"
 #include "esp32-hal.h"
-#include "spdlog/spdlog.h"
 #include <smooth_ui_toolkit.h>
+#include <cmath>
 // https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf
 // https://github.com/boschsensortec/BMI270_SensorAPI
 // https://github.com/arduino-libraries/Arduino_BMI270_BMM150
@@ -118,28 +118,24 @@ void HAL_AtomS3R::updateImuTiltBallOffset()
     // spdlog::info("{} {}", _data.imu_data.tiltBallOffsetX, _data.imu_data.tiltBallOffsetY);
 }
 
-static void _calculate_attitude_yaw(float gyroZ, float deltaTime, float& yaw)
+// 计算磁力计 yaw 角（单位：度）
+static float _calculate_compass_yaw(float magX, float magY)
 {
-    yaw += gyroZ * deltaTime;
+    // 修正为“北”为 0°，并逆时针递增
+    float yaw_rad = atan2(-magX, -magY);
+    float yaw_deg = yaw_rad * (180.0f / M_PI);
+
+    if (yaw_deg < 0) {
+        yaw_deg += 360.0f;
+    }
+
+    return yaw_deg;
 }
 
 void HAL_AtomS3R::updateImuDialAngle()
 {
-    static uint32_t time_count = millis();
-    static float yaw           = 0.0f;
-
-    if (millis() - time_count > 200) {
-        time_count = millis();
-        yaw        = 0.0f;
-        return;
-    }
-
-    _calculate_attitude_yaw(_data.imu_data.gyroZ, millis() - time_count, yaw);
-    // spdlog::info("get yaw: {}", yaw);
-
-    _data.imu_data.dialAngle = (int32_t)yaw / 100;
-
-    time_count = millis();
+    float yaw                = _calculate_compass_yaw(_data.imu_data.magX, _data.imu_data.magY);
+    _data.imu_data.dialAngle = static_cast<int32_t>(yaw * 10);
 }
 
 void HAL_AtomS3R::imu_test()

@@ -1,4 +1,6 @@
 .cache
+.vscode
+.vscode-ctags
 build
 dependencies/arduino_tinyusb/tinyusb
 dependencies/arduino-esp32
