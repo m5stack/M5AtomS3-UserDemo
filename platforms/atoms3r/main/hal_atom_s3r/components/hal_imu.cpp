@@ -13,6 +13,7 @@
 #include "esp32-hal.h"
 #include <smooth_ui_toolkit.h>
 #include <cmath>
+#include <cfloat>
 // https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf
 // https://github.com/boschsensortec/BMI270_SensorAPI
 // https://github.com/arduino-libraries/Arduino_BMI270_BMM150
@@ -118,13 +119,65 @@ void HAL_AtomS3R::updateImuTiltBallOffset()
     // spdlog::info("{} {}", _data.imu_data.tiltBallOffsetX, _data.imu_data.tiltBallOffsetY);
 }
 
-// 计算磁力计 yaw 角（单位：度）
-static float _calculate_compass_yaw(float magX, float magY)
+struct MagCalibrationData {
+    float offsetX   = 0.0f;
+    float offsetY   = 0.0f;
+    bool calibrated = false;
+};
+
+MagCalibrationData magCalib;
+
+void HAL_AtomS3R::calibrateMagnetometer(std::function<void()> onUpdate)
 {
-    // 修正为“北”为 0°，并逆时针递增
+    float magX_min = FLT_MAX, magX_max = -FLT_MAX;
+    float magY_min = FLT_MAX, magY_max = -FLT_MAX;
+
+    constexpr int samples  = 500;
+    constexpr int delay_ms = 10;
+
+    spdlog::info("Start magnetometer calibration...");
+    spdlog::info("Please slowly rotate the device in all directions for a few seconds.");
+
+    for (int i = 0; i < samples; ++i) {
+        updateImuData();
+        feedTheDog();
+        onUpdate();
+
+        float magX = _data.imu_data.magX;
+        float magY = _data.imu_data.magY;
+
+        if (magX < magX_min) magX_min = magX;
+        if (magX > magX_max) magX_max = magX;
+        if (magY < magY_min) magY_min = magY;
+        if (magY > magY_max) magY_max = magY;
+
+        delay(delay_ms);  // 延迟以采样更多方向
+    }
+
+    // 计算 offset（硬铁干扰）
+    magCalib.offsetX    = (magX_max + magX_min) / 2.0f;
+    magCalib.offsetY    = (magY_max + magY_min) / 2.0f;
+    magCalib.calibrated = true;
+
+    spdlog::info("Calibration complete.");
+    spdlog::info("Offset X: {}, Offset Y: {}", magCalib.offsetX, magCalib.offsetY);
+}
+
+// 计算磁力计 yaw 角（单位：度）
+static float _calculate_compass_yaw(float magX_raw, float magY_raw)
+{
+    float magX = magX_raw;
+    float magY = magY_raw;
+
+    if (magCalib.calibrated) {
+        magX -= magCalib.offsetX;
+        magY -= magCalib.offsetY;
+    }
+
     float yaw_rad = atan2(-magX, -magY);
     float yaw_deg = yaw_rad * (180.0f / M_PI);
 
+    yaw_deg -= 180.0f;
     if (yaw_deg < 0) {
         yaw_deg += 360.0f;
     }
