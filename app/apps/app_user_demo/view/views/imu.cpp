@@ -77,6 +77,21 @@ void func_imu_t::start()
 
 void func_imu_t::update(bool btn_click)
 {
+    if (btn_click) {
+        auto panel = lv_obj_create(lv_screen_active());
+        lv_obj_set_style_bg_color(panel, lv_color_black(), 0);
+        lv_obj_set_size(panel, 128, 128);
+        auto label = lv_label_create(panel);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_text(label, "Calibrating...\n\nRotate slowly\nin 8-shape");
+        lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_style_text_color(label, lv_color_white(), 0);
+
+        HAL::CalibrateMagnetometer([&]() { HAL::LvglTimerHandler(); });
+
+        lv_obj_delete(panel);
+    }
+
     HAL::UpdateImuData();
     HAL::UpdateImuTiltBallOffset();
     HAL::UpdateImuDialAngle();
