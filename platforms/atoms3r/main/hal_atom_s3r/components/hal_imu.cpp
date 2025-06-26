@@ -14,6 +14,8 @@
 #include <smooth_ui_toolkit.h>
 #include <cmath>
 #include <cfloat>
+#include <nvs_flash.h>
+#include <nvs.h>
 // https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf
 // https://github.com/boschsensortec/BMI270_SensorAPI
 // https://github.com/arduino-libraries/Arduino_BMI270_BMM150
@@ -22,6 +24,8 @@ using namespace SmoothUIToolKit;
 
 static BMI270_Class* _imu = nullptr;
 static bool _is_bmm150_ok = false;
+
+bool loadMagCalibrationFromNvs();
 
 void HAL_AtomS3R::imu_init()
 {
@@ -64,6 +68,8 @@ void HAL_AtomS3R::imu_init()
         gpio_set_direction((gpio_num_t)HAL_PIN_IMU_INT, GPIO_MODE_INPUT);
         gpio_set_pull_mode((gpio_num_t)HAL_PIN_IMU_INT, GPIO_FLOATING);
     }
+
+    loadMagCalibrationFromNvs();
 
     // /* -------------------------------------------------------------------------- */
     // /*                                    Test                                    */
@@ -120,12 +126,70 @@ void HAL_AtomS3R::updateImuTiltBallOffset()
 }
 
 struct MagCalibrationData {
-    float offsetX   = 0.0f;
-    float offsetY   = 0.0f;
-    bool calibrated = false;
+    float offsetX = 0.0f;
+    float offsetY = 0.0f;
 };
 
 MagCalibrationData magCalib;
+
+const char* NVS_NAMESPACE = "calib";
+const char* NVS_KEY_X     = "mag_offset_x";
+const char* NVS_KEY_Y     = "mag_offset_y";
+
+bool saveMagCalibrationToNvs()
+{
+    spdlog::info("saveMagCalibrationToNvs");
+
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        spdlog::error("nvs_open failed");
+        return false;
+    }
+
+    nvs_set_blob(handle, NVS_KEY_X, &magCalib.offsetX, sizeof(float));
+    nvs_set_blob(handle, NVS_KEY_Y, &magCalib.offsetY, sizeof(float));
+    nvs_commit(handle);
+    nvs_close(handle);
+
+    return true;
+}
+
+bool loadMagCalibrationFromNvs()
+{
+    spdlog::info("loadMagCalibrationFromNvs");
+
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err != ESP_OK) {
+        spdlog::error("nvs_open failed");
+        return false;
+    }
+
+    size_t required_size = sizeof(float);
+    float ox = 0.0f, oy = 0.0f;
+
+    err = nvs_get_blob(handle, NVS_KEY_X, &ox, &required_size);
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        return false;
+    }
+
+    err = nvs_get_blob(handle, NVS_KEY_Y, &oy, &required_size);
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        return false;
+    }
+
+    nvs_close(handle);
+
+    magCalib.offsetX = ox;
+    magCalib.offsetY = oy;
+
+    spdlog::info("loadMagCalibrationFromNvs ok, offsetX: {}, offsetY: {}", ox, oy);
+
+    return true;
+}
 
 void HAL_AtomS3R::calibrateMagnetometer(std::function<void()> onUpdate)
 {
@@ -155,12 +219,13 @@ void HAL_AtomS3R::calibrateMagnetometer(std::function<void()> onUpdate)
     }
 
     // 计算 offset（硬铁干扰）
-    magCalib.offsetX    = (magX_max + magX_min) / 2.0f;
-    magCalib.offsetY    = (magY_max + magY_min) / 2.0f;
-    magCalib.calibrated = true;
+    magCalib.offsetX = (magX_max + magX_min) / 2.0f;
+    magCalib.offsetY = (magY_max + magY_min) / 2.0f;
 
     spdlog::info("Calibration complete.");
     spdlog::info("Offset X: {}, Offset Y: {}", magCalib.offsetX, magCalib.offsetY);
+
+    saveMagCalibrationToNvs();
 }
 
 // 计算磁力计 yaw 角（单位：度）
@@ -169,10 +234,8 @@ static float _calculate_compass_yaw(float magX_raw, float magY_raw)
     float magX = magX_raw;
     float magY = magY_raw;
 
-    if (magCalib.calibrated) {
-        magX -= magCalib.offsetX;
-        magY -= magCalib.offsetY;
-    }
+    magX -= magCalib.offsetX;
+    magY -= magCalib.offsetY;
 
     float yaw_rad = atan2(-magX, -magY);
     float yaw_deg = yaw_rad * (180.0f / M_PI);
