@@ -9,3 +9,4 @@ managed_components
 /output
 
 sdkconfig.old
+sdkconfig

@@ -633,6 +633,18 @@ public:
     {
     }
 
+    static void CalibrateMagnetometer(std::function<void()> onUpdate)
+    {
+        Get()->calibrateMagnetometer(onUpdate);
+    }
+    virtual void calibrateMagnetometer(std::function<void()> onUpdate)
+    {
+        for (int i = 0; i < 5000; i += 10) {
+            this->delay(10);
+            onUpdate();
+        }
+    }
+
     /* -------------------------------------------------------------------------- */
     /*                                   Network                                  */
     /* -------------------------------------------------------------------------- */

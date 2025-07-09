@@ -36,6 +36,7 @@ public:
     bool isImuMagAvailable() override;
     void updateImuTiltBallOffset() override;
     void updateImuDialAngle() override;
+    void calibrateMagnetometer(std::function<void()> onUpdate) override;
     void irSendNecMsg(uint16_t addr, uint16_t command) override;
     void startWifiFactoryTestDaemon() override;
     FACTORY_TEST::WifiTestResult_t* getWifiFactoryTestResult() override;
