@@ -10,9 +10,9 @@
         "branch": "v1.1.0"
     },
     {
-        "url": "https://github.com/Forairaaaaa/M5GFX.git",
+        "url": "https://github.com/Ocean-lhy/M5GFX.git",
         "path": "dependencies/M5GFX",
-        "branch": "0.1.16-with-arduino-as-component"
+        "branch": "0.2.19-with-arduino-as-component"
     },
     {
         "url": "https://github.com/m5stack/M5Unified.git",
