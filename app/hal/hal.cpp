@@ -159,10 +159,18 @@ bool HAL::checkWifiConfig()
 
 #include <random>
 
+#ifdef ESP_PLATFORM
+#include "esp_random.h"
+#endif
+
 int HAL::randomInt(int min, int max)
 {
+#ifdef ESP_PLATFORM
+    std::mt19937 gen(esp_random());
+#else
     std::random_device rd;
     std::mt19937 gen(rd());
+#endif
     std::uniform_int_distribution<> distrib(min, max);
     return distrib(gen);
 }
