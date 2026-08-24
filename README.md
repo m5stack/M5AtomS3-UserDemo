@@ -94,5 +94,5 @@ parttool.py --port <YourPort> write_partition --partition-name=assetpool --input
 
 If you run desktop build before, you can found `AssetPool.bin` at 
 
-`../../build/desktop/AssetPool.bin`. Or download one from the [release](https://github.com/m5stack/M5AtomS3-UserDemo/releases) page.
+`../../build/desktop/AssetPool.bin`. Or download one from the [firmware](./firmware/) page.
 
