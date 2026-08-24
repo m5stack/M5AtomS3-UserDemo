@@ -49,6 +49,12 @@ void func_imu_t::start()
     lv_obj_add_flag(img_buffer, LV_OBJ_FLAG_ADV_HITTEST);
     lv_obj_remove_flag(img_buffer, LV_OBJ_FLAG_SCROLLABLE);
 
+    // BMM150 is optional on newer AtomS3R hardware. Keep the level UI but hide
+    // the compass dial when the magnetometer is not detected.
+    if (!HAL::IsImuMagAvailable()) {
+        lv_obj_add_flag(_lv_img_dial, LV_OBJ_FLAG_HIDDEN);
+    }
+
     // Tilt ball
     ui_img_imu_tilt_ball_png.data      = AssetPool::GetImage().AppUserDemo.imu_tilt_ball;
     ui_img_imu_tilt_ball_png.data_size = sizeof(AssetPool::GetImage().AppUserDemo.imu_tilt_ball);
@@ -77,7 +83,9 @@ void func_imu_t::start()
 
 void func_imu_t::update(bool btn_click)
 {
-    if (btn_click) {
+    const bool mag_available = HAL::IsImuMagAvailable();
+
+    if (btn_click && mag_available) {
         auto panel = lv_obj_create(lv_screen_active());
         lv_obj_set_style_bg_color(panel, lv_color_black(), 0);
         lv_obj_set_size(panel, 128, 128);
@@ -94,14 +102,16 @@ void func_imu_t::update(bool btn_click)
 
     HAL::UpdateImuData();
     HAL::UpdateImuTiltBallOffset();
-    HAL::UpdateImuDialAngle();
 
     /* -------------------------------- Directly -------------------------------- */
     // Tilt ball
     lv_obj_align(_lv_img_tilt_ball, LV_ALIGN_CENTER, HAL::GetImuData().tiltBallOffsetX,
                  HAL::GetImuData().tiltBallOffsetY);
-    // Dial
-    lv_image_set_rotation(_lv_img_dial, HAL::GetImuData().dialAngle);
+    // Dial (requires BMM150)
+    if (mag_available) {
+        HAL::UpdateImuDialAngle();
+        lv_image_set_rotation(_lv_img_dial, HAL::GetImuData().dialAngle);
+    }
 
     // Update and render
     HAL::LvglTimerHandler();

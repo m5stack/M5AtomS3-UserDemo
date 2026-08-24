@@ -32,25 +32,24 @@ void HAL_AtomS3R::imu_init()
     spdlog::info("imu init");
 
     assert(_imu == nullptr);
+    _is_bmm150_ok = false;
+
     _imu = new BMI270_Class();
     if (!_imu->init()) {
         delete _imu;
         _imu = nullptr;
         // popFatalError("imu init failed");
         spdlog::warn("bmi270 init failed");
-    } else {
-        spdlog::info("bmi270 init ok");
+        return;
     }
+    spdlog::info("bmi270 init ok");
 
     if (!_imu->initAuxBmm150()) {
-        delete _imu;
-        _imu = nullptr;
-        // popFatalError("imu init bmm150 failed");
         _is_bmm150_ok = false;
-        spdlog::warn("bmm150 init failed");
+        spdlog::warn("bmm150 detection result: not detected, compass disabled");
     } else {
         _is_bmm150_ok = true;
-        spdlog::info("bmm150 init ok");
+        spdlog::info("bmm150 detection result: detected, compass enabled");
     }
 
     // Interrupt
@@ -69,7 +68,9 @@ void HAL_AtomS3R::imu_init()
         gpio_set_pull_mode((gpio_num_t)HAL_PIN_IMU_INT, GPIO_FLOATING);
     }
 
-    loadMagCalibrationFromNvs();
+    if (_is_bmm150_ok) {
+        loadMagCalibrationFromNvs();
+    }
 
     // /* -------------------------------------------------------------------------- */
     // /*                                    Test                                    */
@@ -80,14 +81,25 @@ void HAL_AtomS3R::imu_init()
 
 void HAL_AtomS3R::updateImuData()
 {
+    if (_imu == nullptr) {
+        return;
+    }
+
     // _imu->readAcceleration(_data.imu_data.accelX, _data.imu_data.accelY, _data.imu_data.accelZ);
     _imu->readAcceleration(_data.imu_data.accelY, _data.imu_data.accelX, _data.imu_data.accelZ);
     _imu->readGyroscope(_data.imu_data.gyroX, _data.imu_data.gyroY, _data.imu_data.gyroZ);
-    _imu->readMagneticField(_data.imu_data.magX, _data.imu_data.magY, _data.imu_data.magZ);
 
-    // Reverse
-    _data.imu_data.magX = -_data.imu_data.magX;
-    _data.imu_data.magZ = -_data.imu_data.magZ;
+    if (_is_bmm150_ok) {
+        _imu->readMagneticField(_data.imu_data.magX, _data.imu_data.magY, _data.imu_data.magZ);
+
+        // Reverse
+        _data.imu_data.magX = -_data.imu_data.magX;
+        _data.imu_data.magZ = -_data.imu_data.magZ;
+    } else {
+        _data.imu_data.magX = 0.0f;
+        _data.imu_data.magY = 0.0f;
+        _data.imu_data.magZ = 0.0f;
+    }
 }
 
 bool HAL_AtomS3R::getImuInterruptState()
@@ -193,6 +205,11 @@ bool loadMagCalibrationFromNvs()
 
 void HAL_AtomS3R::calibrateMagnetometer(std::function<void()> onUpdate)
 {
+    if (_imu == nullptr || !_is_bmm150_ok) {
+        spdlog::warn("magnetometer calibration skipped: bmm150 not detected");
+        return;
+    }
+
     float magX_min = FLT_MAX, magX_max = -FLT_MAX;
     float magY_min = FLT_MAX, magY_max = -FLT_MAX;
 
@@ -250,6 +267,11 @@ static float _calculate_compass_yaw(float magX_raw, float magY_raw)
 
 void HAL_AtomS3R::updateImuDialAngle()
 {
+    if (!_is_bmm150_ok) {
+        _data.imu_data.dialAngle = 0;
+        return;
+    }
+
     float yaw                = _calculate_compass_yaw(_data.imu_data.magX, _data.imu_data.magY);
     _data.imu_data.dialAngle = static_cast<int32_t>(yaw * 10);
 }
